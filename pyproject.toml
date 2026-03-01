@@ -42,22 +42,6 @@ source = [
     "sqladmin_litestar_plugin",
 ]
 
-[tool.mypy]
-enable_error_code = [
-    "ignore-without-code",
-    "redundant-expr",
-    "redundant-self",
-    "truthy-bool",
-    "truthy-iterable",
-    "unused-awaitable",
-]
-show_error_codes = true
-strict = false
-warn_unreachable = true
-warn_unused_configs = true
-overrides = [
-    { module = "tests.*", disallow_untyped_decorators = false },
-]
 
 [tool.pytest.ini_options]
 addopts = [
@@ -178,7 +162,7 @@ dev = [
     "anyio",
     "codespell",
     "coverage",
-    "mypy",
+    "pyright",
     "pytest",
     "pytest-mock",
     "ruff",
