@@ -84,7 +84,7 @@ class SQLAdminPlugin(InitPluginProtocol):
 
         mount_path = self.admin.base_url.rstrip("/")
 
-        @asgi(mount_path, is_mount=True)
+        @asgi(mount_path, is_mount=True, copy_scope=False)  # type: ignore[misc]
         async def wrapped_app(scope: Scope, receive: Receive, send: Send) -> None:
             """Wrapper for the SQLAdmin app.
 
