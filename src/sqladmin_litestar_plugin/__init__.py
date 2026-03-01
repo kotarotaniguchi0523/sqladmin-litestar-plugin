@@ -72,7 +72,7 @@ class SQLAdminPlugin(InitPluginProtocol):
             if value is not Empty
         }
         self.starlette_app = Starlette()
-        self.admin = sqladmin.Admin(app=self.starlette_app, **admin_kwargs)  # type: ignore[arg-type]
+        self.admin = sqladmin.Admin(app=self.starlette_app, **admin_kwargs)
         self.starlette_app.add_middleware(PathFixMiddleware, base_url=self.admin.base_url)
         # disables redirecting based on absence/presence of trailing slashes
         self.starlette_app.router.redirect_slashes = False
@@ -84,14 +84,14 @@ class SQLAdminPlugin(InitPluginProtocol):
 
         mount_path = self.admin.base_url.rstrip("/")
 
-        @asgi(mount_path, is_mount=True)
+        @asgi(mount_path, is_mount=True, copy_scope=False) # type: ignore[misc]
         async def wrapped_app(scope: Scope, receive: Receive, send: Send) -> None:
             """Wrapper for the SQLAdmin app.
 
             Performs, and unwinds, the necessary scope modifications for the SQLAdmin app.
             """
             try:
-                await self.starlette_app(_prepare_scope(scope, mount_path), receive, send)  # type: ignore[arg-type]
+                await self.starlette_app(_prepare_scope(scope, mount_path), receive, send)
             except Exception:
                 logger.exception("Error raised from SQLAdmin app")
 

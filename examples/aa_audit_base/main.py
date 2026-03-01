@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from advanced_alchemy.base import UUIDAuditBase
-from advanced_alchemy.extensions.litestar import SQLAlchemyPlugin
+from advanced_alchemy.extensions.litestar import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar import Litestar
-from litestar.contrib.sqlalchemy.plugins import SQLAlchemyAsyncConfig
 from sqlalchemy import Column, String
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -21,10 +20,10 @@ class EntityAdmin(AuditModelView, model=Entity): ...
 
 
 app = Litestar(
-    plugins=(
+    plugins=[
         SQLAlchemyPlugin(config=SQLAlchemyAsyncConfig(engine_instance=engine, create_all=True)),
         sqladmin_litestar_plugin.SQLAdminPlugin(
             views=[EntityAdmin], engine=engine, base_url="/admin"
         ),
-    ),
+    ],
 )

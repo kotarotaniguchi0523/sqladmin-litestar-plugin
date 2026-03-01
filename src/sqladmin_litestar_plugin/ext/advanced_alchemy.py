@@ -20,7 +20,7 @@ class DateTimeUTCField(DateTimeField):
 
 class DateTimeUTCConverter(ModelConverter):
     # mypy: error: Untyped decorator makes function "convert_date_time_utc" untyped  [misc]
-    @converts("DateTimeUTC")  # type: ignore[misc]
+    @converts("DateTimeUTC")  # type: ignore[misc,untyped-decorator]
     def convert_date_time_utc(self, *, kwargs: dict[str, Any], **_: Any) -> DateTimeUTCField:  # noqa: PLR6301
         return DateTimeUTCField(**kwargs)
 
