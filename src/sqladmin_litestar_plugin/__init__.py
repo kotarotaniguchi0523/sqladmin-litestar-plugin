@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from sqladmin import ModelView
     from sqladmin.authentication import AuthenticationBackend
     from sqlalchemy.engine import Engine
-    from sqlalchemy.ext.asyncio import AsyncEngine
+    from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
     from sqlalchemy.orm import sessionmaker
     from starlette import types as st_types
     from starlette.middleware import Middleware
@@ -35,11 +35,13 @@ class SQLAdminPlugin(InitPlugin):
         *,
         views: Sequence[type[ModelView]] | EmptyType = Empty,
         engine: Engine | AsyncEngine | EmptyType = Empty,
-        sessionmaker: sessionmaker[Any] | EmptyType = Empty,
+        session_maker: sessionmaker[Any] | async_sessionmaker[Any] | EmptyType = Empty,
         base_url: str | EmptyType = Empty,
         title: str | EmptyType = Empty,
         logo_url: str | EmptyType = Empty,
+        favicon_url: str | EmptyType = Empty,
         templates_dir: str | EmptyType = Empty,
+        debug: bool | EmptyType = Empty,
         middlewares: Sequence[Middleware] | EmptyType = Empty,
         authentication_backend: AuthenticationBackend | EmptyType = Empty,
     ) -> None:
@@ -48,11 +50,13 @@ class SQLAdminPlugin(InitPlugin):
         Args:
             views: A sequence of ModelView classes to add to the admin app.
             engine: An SQLAlchemy engine.
-            sessionmaker: An SQLAlchemy sessionmaker.
+            session_maker: An SQLAlchemy sessionmaker or async_sessionmaker.
             base_url: The base URL for the admin app.
             title: The title of the admin app.
             logo_url: The URL of the logo to display in the admin app.
+            favicon_url: The URL of the favicon to display in the admin app.
             templates_dir: The directory containing the Jinja2 templates for the admin app.
+            debug: Enable debug mode on the admin app.
             middlewares: A sequence of Starlette middlewares to add to the admin app.
             authentication_backend: An authentication backend to use for the admin app.
         """
@@ -61,11 +65,13 @@ class SQLAdminPlugin(InitPlugin):
             kw: value
             for kw, value in [
                 ("engine", engine),
-                ("sessionmaker", sessionmaker),
+                ("session_maker", session_maker),
                 ("base_url", base_url),
                 ("title", title),
                 ("logo_url", logo_url),
+                ("favicon_url", favicon_url),
                 ("templates_dir", templates_dir),
+                ("debug", debug),
                 ("middlewares", middlewares),
                 ("authentication_backend", authentication_backend),
             ]
@@ -94,6 +100,7 @@ class SQLAdminPlugin(InitPlugin):
                 await self.starlette_app(_prepare_scope(scope, mount_path), receive, send)  # type: ignore[arg-type]
             except Exception:
                 logger.exception("Error raised from SQLAdmin app")
+                raise
 
         app_config.route_handlers.append(wrapped_app)
         return app_config
@@ -133,18 +140,11 @@ class PathFixMiddleware:
         scope["path"] = path
         scope["raw_path"] = scope["path"].encode("utf-8")
 
-        def reset_paths() -> None:
+        try:
+            await self.app(scope, receive, send)
+        finally:
             scope["path"] = orig_path
             scope["raw_path"] = orig_raw
-
-        async def send_wrapper(message: Any) -> None:
-            reset_paths()
-            await send(message)
-
-        try:
-            await self.app(scope, receive, send_wrapper)
-        finally:
-            reset_paths()
 
 
 def _prepare_scope(scope: Scope, mount_path: str) -> Scope:
@@ -165,7 +165,7 @@ def _prepare_scope(scope: Scope, mount_path: str) -> Scope:
         scope: The ASGI scope.
         mount_path: The base URL for the admin app.
 
-    Yields:
+    Returns:
         The patched scope.
     """
     copied_scope = cast("Scope", dict(scope))

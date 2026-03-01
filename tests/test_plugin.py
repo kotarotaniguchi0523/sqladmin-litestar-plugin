@@ -50,7 +50,11 @@ async def test_resets_app_in_scope(
     handler = app.route_handler_method_map["/admin"]["asgi"].fn
     fake_scope = {"app": app, "path": "/"}
 
-    await handler(fake_scope, MagicMock(), MagicMock())
+    if should_raise:
+        with pytest.raises(RuntimeError):
+            await handler(fake_scope, MagicMock(), MagicMock())
+    else:
+        await handler(fake_scope, MagicMock(), MagicMock())
     assert fake_scope["app"] == app
     mock.assert_called_once()
 
