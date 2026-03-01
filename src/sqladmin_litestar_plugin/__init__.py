@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import sqladmin
 from litestar import asgi
-from litestar.plugins.base import InitPluginProtocol
+from litestar.plugins import InitPlugin
 from litestar.types.empty import Empty
 from litestar.utils.empty import value_or_default
 from starlette.applications import Starlette
@@ -29,7 +29,7 @@ __all__ = ("SQLAdminPlugin",)
 logger = logging.getLogger(__name__)
 
 
-class SQLAdminPlugin(InitPluginProtocol):
+class SQLAdminPlugin(InitPlugin):
     def __init__(  # noqa: PLR0913
         self,
         *,
