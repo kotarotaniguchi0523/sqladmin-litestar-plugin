@@ -95,3 +95,24 @@ async def test_path_fix_middleware(path: str, expected: str, *, should_raise: bo
 
     assert fake_scope["path"] == path
     assert fake_scope["raw_path"] == path.encode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "admin",
+        "//evil.com",
+        "/../secret",
+        "/admin/../secret",
+        "/admin/./here",
+    ],
+)
+def test_base_url_validation_rejects_invalid(base_url: str) -> None:
+    with pytest.raises(ValueError, match="base_url"):
+        SQLAdminPlugin(base_url=base_url)
+
+
+@pytest.mark.parametrize("base_url", ["/admin", "/my-admin/panel"])
+def test_base_url_validation_accepts_valid(base_url: str) -> None:
+    plugin = SQLAdminPlugin(base_url=base_url)
+    assert plugin.admin.base_url == base_url

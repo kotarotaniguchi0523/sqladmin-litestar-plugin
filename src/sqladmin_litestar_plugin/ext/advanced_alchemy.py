@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from sqladmin import ModelView
@@ -9,6 +9,8 @@ from wtforms import DateTimeField
 
 
 class DateTimeUTCField(DateTimeField):
+    data: datetime | None
+
     def process_formdata(self, valuelist: list[Any]) -> None:
         super().process_formdata(valuelist)
 

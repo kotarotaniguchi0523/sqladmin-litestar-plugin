@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import posixpath
 from typing import TYPE_CHECKING, Any, cast
 
 import sqladmin
@@ -60,6 +61,8 @@ class SQLAdminPlugin(InitPlugin):
             middlewares: A sequence of Starlette middlewares to add to the admin app.
             authentication_backend: An authentication backend to use for the admin app.
         """
+        if base_url is not Empty:
+            _validate_base_url(base_url)
         self.views = list(value_or_default(views, []))
         admin_kwargs = {
             kw: value
@@ -147,10 +150,31 @@ class PathFixMiddleware:
             scope["raw_path"] = orig_raw
 
 
-def _prepare_scope(scope: Scope, mount_path: str) -> Scope:
-    """Context manager to patch the scope for the SQLAdmin app.
+def _validate_base_url(base_url: str) -> None:
+    """Validates the base URL for the admin app.
 
-    Returns a copy of the original scope so that any modification to the scope made by the Starlette
+    Args:
+        base_url: The base URL to validate.
+
+    Raises:
+        ValueError: If the base URL is invalid.
+    """
+    if not base_url.startswith("/"):
+        msg = f"base_url must start with '/': {base_url!r}"
+        raise ValueError(msg)
+    if base_url.startswith("//"):
+        msg = f"base_url must not start with '//': {base_url!r}"
+        raise ValueError(msg)
+    normalized = posixpath.normpath(base_url)
+    if normalized != base_url.rstrip("/") or ".." in base_url:
+        msg = f"base_url must not contain path traversal segments: {base_url!r}"
+        raise ValueError(msg)
+
+
+def _prepare_scope(scope: Scope, mount_path: str) -> Scope:
+    """Patch the scope for the SQLAdmin app.
+
+    Returns a shallow copy of the original scope so that any modification to the scope made by the Starlette
     application does not affect components of the Litestar application that have already taken
     a reference to it.
 
