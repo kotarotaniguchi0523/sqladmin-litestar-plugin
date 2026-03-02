@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
+import posixpath
 from typing import TYPE_CHECKING, Any, cast
 
 import sqladmin
 from litestar import asgi
-from litestar.plugins.base import InitPluginProtocol
+from litestar.plugins import InitPlugin
 from litestar.types.empty import Empty
 from litestar.utils.empty import value_or_default
 from starlette.applications import Starlette
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from sqladmin import ModelView
     from sqladmin.authentication import AuthenticationBackend
     from sqlalchemy.engine import Engine
-    from sqlalchemy.ext.asyncio import AsyncEngine
+    from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
     from sqlalchemy.orm import sessionmaker
     from starlette import types as st_types
     from starlette.middleware import Middleware
@@ -29,17 +30,19 @@ __all__ = ("SQLAdminPlugin",)
 logger = logging.getLogger(__name__)
 
 
-class SQLAdminPlugin(InitPluginProtocol):
+class SQLAdminPlugin(InitPlugin):
     def __init__(  # noqa: PLR0913
         self,
         *,
         views: Sequence[type[ModelView]] | EmptyType = Empty,
         engine: Engine | AsyncEngine | EmptyType = Empty,
-        sessionmaker: sessionmaker[Any] | EmptyType = Empty,
+        session_maker: sessionmaker[Any] | async_sessionmaker[Any] | EmptyType = Empty,
         base_url: str | EmptyType = Empty,
         title: str | EmptyType = Empty,
         logo_url: str | EmptyType = Empty,
+        favicon_url: str | EmptyType = Empty,
         templates_dir: str | EmptyType = Empty,
+        debug: bool | EmptyType = Empty,
         middlewares: Sequence[Middleware] | EmptyType = Empty,
         authentication_backend: AuthenticationBackend | EmptyType = Empty,
     ) -> None:
@@ -48,24 +51,30 @@ class SQLAdminPlugin(InitPluginProtocol):
         Args:
             views: A sequence of ModelView classes to add to the admin app.
             engine: An SQLAlchemy engine.
-            sessionmaker: An SQLAlchemy sessionmaker.
+            session_maker: An SQLAlchemy sessionmaker or async_sessionmaker.
             base_url: The base URL for the admin app.
             title: The title of the admin app.
             logo_url: The URL of the logo to display in the admin app.
+            favicon_url: The URL of the favicon to display in the admin app.
             templates_dir: The directory containing the Jinja2 templates for the admin app.
+            debug: Enable debug mode on the admin app.
             middlewares: A sequence of Starlette middlewares to add to the admin app.
             authentication_backend: An authentication backend to use for the admin app.
         """
+        if base_url is not Empty:
+            _validate_base_url(base_url)
         self.views = list(value_or_default(views, []))
         admin_kwargs = {
             kw: value
             for kw, value in [
                 ("engine", engine),
-                ("sessionmaker", sessionmaker),
+                ("session_maker", session_maker),
                 ("base_url", base_url),
                 ("title", title),
                 ("logo_url", logo_url),
+                ("favicon_url", favicon_url),
                 ("templates_dir", templates_dir),
+                ("debug", debug),
                 ("middlewares", middlewares),
                 ("authentication_backend", authentication_backend),
             ]
@@ -94,6 +103,7 @@ class SQLAdminPlugin(InitPluginProtocol):
                 await self.starlette_app(_prepare_scope(scope, mount_path), receive, send)  # type: ignore[arg-type]
             except Exception:
                 logger.exception("Error raised from SQLAdmin app")
+                raise
 
         app_config.route_handlers.append(wrapped_app)
         return app_config
@@ -127,30 +137,46 @@ class PathFixMiddleware:
         orig_raw = scope["raw_path"]
 
         path = f"/{scope['path'].lstrip('/').rstrip('/')}"
+        raw_path = b"/" + scope["raw_path"].lstrip(b"/").rstrip(b"/")
         if path == self.base_url:
             path = f"{path}/"
+            raw_path += b"/"
 
         scope["path"] = path
-        scope["raw_path"] = scope["path"].encode("utf-8")
+        scope["raw_path"] = raw_path
 
-        def reset_paths() -> None:
+        try:
+            await self.app(scope, receive, send)
+        finally:
             scope["path"] = orig_path
             scope["raw_path"] = orig_raw
 
-        async def send_wrapper(message: Any) -> None:
-            reset_paths()
-            await send(message)
 
-        try:
-            await self.app(scope, receive, send_wrapper)
-        finally:
-            reset_paths()
+def _validate_base_url(base_url: str) -> None:
+    """Validates the base URL for the admin app.
+
+    Args:
+        base_url: The base URL to validate.
+
+    Raises:
+        ValueError: If the base URL is invalid.
+    """
+    if not base_url.startswith("/"):
+        msg = f"base_url must start with '/': {base_url!r}"
+        raise ValueError(msg)
+    if base_url.startswith("//"):
+        msg = f"base_url must not start with '//': {base_url!r}"
+        raise ValueError(msg)
+    normalized = posixpath.normpath(base_url)
+    if normalized != base_url.rstrip("/") or ".." in base_url:
+        msg = f"base_url must not contain path traversal segments: {base_url!r}"
+        raise ValueError(msg)
 
 
 def _prepare_scope(scope: Scope, mount_path: str) -> Scope:
-    """Context manager to patch the scope for the SQLAdmin app.
+    """Patch the scope for the SQLAdmin app.
 
-    Returns a copy of the original scope so that any modification to the scope made by the Starlette
+    Returns a shallow copy of the original scope so that any modification to the scope made by the Starlette
     application does not affect components of the Litestar application that have already taken
     a reference to it.
 
@@ -165,9 +191,14 @@ def _prepare_scope(scope: Scope, mount_path: str) -> Scope:
         scope: The ASGI scope.
         mount_path: The base URL for the admin app.
 
-    Yields:
+    Returns:
         The patched scope.
     """
     copied_scope = cast("Scope", dict(scope))
     copied_scope["path"] = f"{mount_path}{scope['path']}"
+    # Deep-copy mutable values to prevent state leakage between Litestar and Starlette/sqladmin.
+    if "state" in copied_scope:
+        copied_scope["state"] = dict(copied_scope["state"])
+    if "headers" in copied_scope:
+        copied_scope["headers"] = list(copied_scope["headers"])
     return copied_scope

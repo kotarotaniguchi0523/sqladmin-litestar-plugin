@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from litestar import Litestar
 
-from sqladmin_litestar_plugin import PathFixMiddleware, SQLAdminPlugin
+from sqladmin_litestar_plugin import (
+    PathFixMiddleware,
+    SQLAdminPlugin,
+    _prepare_scope,  # noqa: PLC2701
+)
 
 if TYPE_CHECKING:
     from litestar.types.asgi_types import Receive, Scope, Send
@@ -50,7 +54,11 @@ async def test_resets_app_in_scope(
     handler = app.route_handler_method_map["/admin"]["asgi"].fn
     fake_scope = {"app": app, "path": "/"}
 
-    await handler(fake_scope, MagicMock(), MagicMock())
+    if should_raise:
+        with pytest.raises(RuntimeError):
+            await handler(fake_scope, MagicMock(), MagicMock())
+    else:
+        await handler(fake_scope, MagicMock(), MagicMock())
     assert fake_scope["app"] == app
     mock.assert_called_once()
 
@@ -91,3 +99,53 @@ async def test_path_fix_middleware(path: str, expected: str, *, should_raise: bo
 
     assert fake_scope["path"] == path
     assert fake_scope["raw_path"] == path.encode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "admin",
+        "//evil.com",
+        "/../secret",
+        "/admin/../secret",
+        "/admin/./here",
+    ],
+)
+def test_base_url_validation_rejects_invalid(base_url: str) -> None:
+    with pytest.raises(ValueError, match="base_url"):
+        SQLAdminPlugin(base_url=base_url)
+
+
+@pytest.mark.parametrize("base_url", ["/admin", "/my-admin/panel"])
+def test_base_url_validation_accepts_valid(base_url: str) -> None:
+    plugin = SQLAdminPlugin(base_url=base_url)
+    assert plugin.admin.base_url == base_url
+
+
+@pytest.mark.anyio
+async def test_path_fix_middleware_preserves_raw_path_encoding() -> None:
+    from starlette.types import Receive, Scope, Send  # noqa: PLC0415, F401
+
+    async def app(scope: Scope, _: Receive, send: Send) -> None:
+        assert scope["raw_path"] == b"/admin/hello%20world"
+        await send(MagicMock())
+
+    middleware = PathFixMiddleware(app, base_url="/admin")
+    fake_scope = {"path": "/admin/hello world", "raw_path": b"/admin/hello%20world"}
+
+    await middleware(fake_scope, MagicMock(), AsyncMock())
+
+    assert fake_scope["raw_path"] == b"/admin/hello%20world"
+
+
+def test_prepare_scope_isolates_state() -> None:
+    original_state = {"user": "alice"}
+    scope = {"path": "/list", "state": original_state, "headers": [(b"host", b"localhost")]}
+
+    copied = _prepare_scope(scope, "/admin")
+
+    copied["state"]["injected"] = True
+    copied["headers"].append((b"x-extra", b"value"))
+
+    assert "injected" not in original_state
+    assert len(scope["headers"]) == 1

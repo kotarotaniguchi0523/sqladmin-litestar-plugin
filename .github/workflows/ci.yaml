@@ -12,11 +12,12 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.8"
           - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
+          - "3.14"
     steps:
     - uses: actions/checkout@v5
       name: Check out repository
@@ -25,18 +26,14 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
 
-    - name: Install Poetry
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 - --version 1.8.4
-
-    - name: Configure Poetry
-      run: |
-        $HOME/.local/bin/poetry config virtualenvs.create false
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
 
     - name: Install dependencies
       run: |
-        $HOME/.local/bin/poetry install --no-interaction
+        uv sync --all-groups
 
     - name: Run tests
       run: |

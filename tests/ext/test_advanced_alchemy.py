@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 from advanced_alchemy.base import UUIDAuditBase
@@ -12,7 +12,7 @@ from wtforms import Form
 from sqladmin_litestar_plugin.ext.advanced_alchemy import AuditModelView, DateTimeUTCField
 
 
-class DummyPostData(Dict[str, Any]):
+class DummyPostData(dict[str, Any]):
     def getlist(self, key: str) -> list[Any]:
         v = self[key]
         if isinstance(v, (list, tuple)):
