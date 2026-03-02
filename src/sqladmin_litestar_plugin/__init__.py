@@ -137,11 +137,13 @@ class PathFixMiddleware:
         orig_raw = scope["raw_path"]
 
         path = f"/{scope['path'].lstrip('/').rstrip('/')}"
+        raw_path = b"/" + scope["raw_path"].lstrip(b"/").rstrip(b"/")
         if path == self.base_url:
             path = f"{path}/"
+            raw_path += b"/"
 
         scope["path"] = path
-        scope["raw_path"] = scope["path"].encode("utf-8")
+        scope["raw_path"] = raw_path
 
         try:
             await self.app(scope, receive, send)
@@ -194,4 +196,9 @@ def _prepare_scope(scope: Scope, mount_path: str) -> Scope:
     """
     copied_scope = cast("Scope", dict(scope))
     copied_scope["path"] = f"{mount_path}{scope['path']}"
+    # Deep-copy mutable values to prevent state leakage between Litestar and Starlette/sqladmin.
+    if "state" in copied_scope:
+        copied_scope["state"] = dict(copied_scope["state"])
+    if "headers" in copied_scope:
+        copied_scope["headers"] = list(copied_scope["headers"])
     return copied_scope
